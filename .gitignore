@@ -205,3 +205,14 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Local diff / review artifacts
+codex_changes.diff
+codex_core.diff
+codex_core_utf8.diff
+
+# Local model/report outputs for baseline experiments
+artifacts/*.pkl
+artifacts/*.joblib
+reports/*.json
+reports/*.csv
