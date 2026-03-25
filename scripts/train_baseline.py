@@ -15,7 +15,11 @@ if str(ROOT) not in sys.path:
 
 from src.audit import print_audit_summary, run_data_audit, save_audit_json
 from src.features import fit_features, transform_features
-from src.model import evaluate_model, train_logreg_baseline
+from src.model import (
+    evaluate_model,
+    train_logreg_baseline,
+    train_multinomial_nb_baseline,
+)
 from src.preprocess import GROUP_COLUMN, TARGET_COLUMN, clean_dataframe, resolve_columns
 from src.split import grouped_train_val_split, has_group_leakage
 
@@ -25,6 +29,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--train_csv", required=True, help="Path to labeled training CSV.")
     parser.add_argument("--val_size", type=float, default=0.2, help="Validation split size.")
     parser.add_argument("--seed", type=int, default=311, help="Random seed for split/model.")
+    parser.add_argument(
+        "--model_family",
+        choices=["logreg", "mnb"],
+        default="logreg",
+        help="Which baseline model family to train.",
+    )
+    parser.add_argument(
+        "--mnb_alpha",
+        type=float,
+        default=1.0,
+        help="Smoothing parameter for Multinomial Naive Bayes.",
+    )
     parser.add_argument(
         "--artifact_out",
         default="artifacts/baseline_logreg_tfidf.pkl",
@@ -74,7 +90,11 @@ def main() -> None:
     y_train = train_df[TARGET_COLUMN].to_numpy()
     y_val = val_df[TARGET_COLUMN].to_numpy()
 
-    model = train_logreg_baseline(x_train, y_train, seed=args.seed)
+    if args.model_family == "logreg":
+        model = train_logreg_baseline(x_train, y_train, seed=args.seed)
+    else:
+        model = train_multinomial_nb_baseline(x_train, y_train, alpha=args.mnb_alpha)
+
     train_metrics, _ = evaluate_model(model, x_train, y_train)
     val_metrics, val_predictions = evaluate_model(model, x_val, y_val)
 
@@ -82,6 +102,7 @@ def main() -> None:
         "train_csv": str(train_csv),
         "seed": args.seed,
         "val_size": args.val_size,
+        "model_family": args.model_family,
         "train_rows": int(train_df.shape[0]),
         "val_rows": int(val_df.shape[0]),
         "train_unique_ids": int(train_df[GROUP_COLUMN].nunique()),
@@ -112,6 +133,7 @@ def main() -> None:
     artifact_payload = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "seed": args.seed,
+        "model_family": args.model_family,
         "model": model,
         "vectorizer": feature_state["vectorizer"],
         "fill_values": feature_state["fill_values"],
@@ -133,4 +155,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

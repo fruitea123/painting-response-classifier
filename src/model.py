@@ -2,12 +2,20 @@ from __future__ import annotations
 
 import numpy as np
 from sklearn.linear_model import LogisticRegression
+from sklearn.naive_bayes import MultinomialNB
 from sklearn.metrics import accuracy_score, f1_score
 
 
 def train_logreg_baseline(x_train, y_train, seed: int = 311) -> LogisticRegression:
     """Train a simple multinomial logistic regression baseline."""
     model = LogisticRegression(max_iter=2000, random_state=seed)
+    model.fit(x_train, y_train)
+    return model
+
+
+def train_multinomial_nb_baseline(x_train, y_train, alpha: float = 1.0) -> MultinomialNB:
+    """Train a Multinomial Naive Bayes baseline on non-negative features."""
+    model = MultinomialNB(alpha=alpha)
     model.fit(x_train, y_train)
     return model
 
@@ -21,4 +29,3 @@ def evaluate_model(model, x_eval, y_true):
         "macro_f1": float(f1_score(y_true, y_pred, average="macro")),
     }
     return metrics, np.asarray(y_pred)
-
