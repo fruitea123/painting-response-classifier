@@ -79,6 +79,8 @@ def main() -> None:
         "fill_values": artifact["fill_values"],
         "text_columns": artifact["feature_config"]["text_columns"],
         "structured_columns": artifact["feature_config"]["structured_columns"],
+        "categorical_columns": artifact["feature_config"].get("categorical_columns", []),
+        "categorical_encoders": artifact["feature_config"].get("categorical_encoders", {}),
         "tfidf_config": artifact["feature_config"]["tfidf_config"],
     }
 
@@ -117,4 +119,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -141,6 +141,8 @@ def main() -> None:
         "feature_config": {
             "text_columns": feature_state["text_columns"],
             "structured_columns": feature_state["structured_columns"],
+            "categorical_columns": feature_state["categorical_columns"],
+            "categorical_encoders": feature_state["categorical_encoders"],
             "tfidf_config": feature_state["tfidf_config"],
         },
         "val_unique_ids": val_unique_ids,
