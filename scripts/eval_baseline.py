@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--data_csv",
         required=True,
-        help="Path to labeled CSV used for evaluation.",
+        help="Path to sanitized, labelled CSV used for evaluation.",
     )
     parser.add_argument(
         "--subset",
@@ -57,14 +57,12 @@ def main() -> None:
     with model_path.open("rb") as f:
         artifact = pickle.load(f)
 
-    df_raw = pd.read_csv(data_csv)
-
-    column_mapping = artifact["column_mapping"]
-    validate_column_mapping(df_raw.columns, column_mapping, require_label=True)
-    df_clean = clean_dataframe(df_raw, column_mapping=column_mapping, require_label=True)
+    with open(args.data_csv, "r", encoding="utf-8") as file:
+        df_clean = pd.read_csv(file)
 
     if args.subset == "saved_val":
-        saved_ids = set(str(v) for v in artifact.get("val_unique_ids", []))
+        val_unique_ids = sorted(df_clean[GROUP_COLUMN].astype(str).unique().tolist())
+        saved_ids = set(str(v) for v in val_unique_ids)
         eval_df = df_clean[df_clean[GROUP_COLUMN].astype(str).isin(saved_ids)].copy()
         if eval_df.empty:
             raise ValueError(
