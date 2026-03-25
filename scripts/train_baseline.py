@@ -55,7 +55,7 @@ def main() -> None:
     # y_val = val_df[TARGET_COLUMN].to_numpy()
 
     train = load_module_from_path(args.model).train
-    model = train(x_train, y_train, seed=args.seed)
+    model, stats = train(x_train, y_train, seed=args.seed)
     train_metrics, _ = evaluate_model(model, x_train, y_train)
 
     metrics_payload = {
@@ -64,6 +64,7 @@ def main() -> None:
         "train_rows": int(train_df.shape[0]),
         "train_unique_ids": int(train_df[GROUP_COLUMN].nunique()),
         "train_metrics": train_metrics,
+        "tune_stats": stats 
     }
 
     metrics_out = Path(args.metrics_out)
