@@ -15,7 +15,9 @@ This repo now includes a thin baseline scaffold for CSC311 course development:
 - `src/preprocess.py`: conservative column resolution + minimal cleaning/parsing
 - `src/split.py`: grouped train/validation split by `unique_id`
 - `src/features.py`: TF-IDF text features + small numeric/ordinal feature block
-- `src/model.py`: logistic regression training and evaluation metrics
+- `src/model.py`: model evaluation metrics
+- `src/logreg_baseline.py`: logistic regression training
+- `scripts/data_processing.py`: sanitize data and split into training/validation set and test set
 - `scripts/train_baseline.py`: train baseline model, save metrics and artifact
 - `scripts/eval_baseline.py`: load artifact and evaluate on labeled data
 - `starter/`: reference starter files, unchanged

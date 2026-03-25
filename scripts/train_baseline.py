@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import pickle
 import sys
@@ -14,13 +15,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.features import fit_features, transform_features
-from src.model import evaluate_model, train_logreg_baseline
-from src.preprocess import GROUP_COLUMN, TARGET_COLUMN, resolve_columns
+from src.model import evaluate_model
+from src.preprocess import GROUP_COLUMN, TARGET_COLUMN
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train grouped baseline model.")
-    parser.add_argument("--train_csv", required=True, help="Path to CSV containing sanitized training data.")
+    parser.add_argument("--train_csv", default="data/train.csv", help="Path to CSV containing sanitized training data.")
+    parser.add_argument("--model", required=True, help="Python module containing the model training function.")
     parser.add_argument("--seed", type=int, default=311, help="Random seed for model.")
     parser.add_argument(
         "--artifact_out",
@@ -35,6 +37,12 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def load_module_from_path(path):
+    spec = importlib.util.spec_from_file_location("user_module", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
 def main() -> None:
     args = parse_args()
 
@@ -46,7 +54,8 @@ def main() -> None:
     y_train = train_df[TARGET_COLUMN].to_numpy()
     # y_val = val_df[TARGET_COLUMN].to_numpy()
 
-    model = train_logreg_baseline(x_train, y_train, seed=args.seed)
+    train = load_module_from_path(args.model).train
+    model = train(x_train, y_train, seed=args.seed)
     train_metrics, _ = evaluate_model(model, x_train, y_train)
 
     metrics_payload = {
