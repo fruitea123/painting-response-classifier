@@ -12,7 +12,8 @@ TARGET_COLUMN = "label"
 
 TEXT_FEEL_COLUMN = "text_feel"
 TEXT_SOUNDTRACK_COLUMN = "text_soundtrack"
-TEXT_FEATURE_COLUMNS = [TEXT_FEEL_COLUMN, TEXT_SOUNDTRACK_COLUMN]
+TEXT_FOOD_COLUMN = "text_food"
+TEXT_FEATURE_COLUMNS = [TEXT_FEEL_COLUMN, TEXT_SOUNDTRACK_COLUMN, TEXT_FOOD_COLUMN]
 
 INTENSITY_COLUMN = "intensity"
 COLOUR_COUNT_COLUMN = "colour_count"
@@ -21,6 +22,7 @@ LIKERT_SOMBRE_COLUMN = "likert_sombre"
 LIKERT_CONTENT_COLUMN = "likert_content"
 LIKERT_CALM_COLUMN = "likert_calm"
 LIKERT_UNEASY_COLUMN = "likert_uneasy"
+PAYMENT_COLUMN = "payment"
 
 STRUCTURED_FEATURE_COLUMNS = [
     INTENSITY_COLUMN,
@@ -30,7 +32,13 @@ STRUCTURED_FEATURE_COLUMNS = [
     LIKERT_CONTENT_COLUMN,
     LIKERT_CALM_COLUMN,
     LIKERT_UNEASY_COLUMN,
+    PAYMENT_COLUMN,
 ]
+
+ROOM_COLUMN = "room"
+VIEW_WITH_COLUMN = "view_with"
+SEASON_COLUMN = "season"
+CATEGORICAL_MULTI_COLUMNS = [ROOM_COLUMN, VIEW_WITH_COLUMN, SEASON_COLUMN]
 
 # Conservative, explicit mappings based on current dataset columns.
 # Only exact matches from canonical + small alias lists are allowed.
@@ -49,6 +57,11 @@ CANONICAL_COLUMNS = {
     "likert_content": "This art piece makes me feel content.",
     "likert_calm": "This art piece makes me feel calm.",
     "likert_uneasy": "This art piece makes me feel uneasy.",
+    "payment": "How much (in Canadian dollars) would you be willing to pay for this painting?",
+    "room": "If you could purchase this painting, which room would you put that painting in?",
+    "view_with": "If you could view this art in person, who would you want to view it with?",
+    "season": "What season does this art piece remind you of?",
+    "text_food": "If this painting was a food, what would be?",
 }
 
 COLUMN_ALIASES = {
@@ -60,6 +73,7 @@ COLUMN_ALIASES = {
 }
 
 _LIKERT_RE = re.compile(r"^\s*([1-5])")
+_PAYMENT_RE = re.compile(r"-?\d+(?:\.\d+)?")
 
 
 def resolve_columns(columns: Iterable[str], require_label: bool = True) -> dict[str, str]:
@@ -77,6 +91,11 @@ def resolve_columns(columns: Iterable[str], require_label: bool = True) -> dict[
         "likert_content",
         "likert_calm",
         "likert_uneasy",
+        "payment",
+        "room",
+        "view_with",
+        "season",
+        "text_food",
     ]
     if require_label:
         required_keys.insert(1, "label")
@@ -118,6 +137,11 @@ def validate_column_mapping(
         "likert_content",
         "likert_calm",
         "likert_uneasy",
+        "payment",
+        "room",
+        "view_with",
+        "season",
+        "text_food",
     ]
     if require_label:
         required_keys.insert(1, "label")
@@ -163,6 +187,35 @@ def safe_numeric_series(series: pd.Series) -> pd.Series:
     return pd.to_numeric(series, errors="coerce")
 
 
+def parse_payment_value(value: object) -> float:
+    if pd.isna(value):
+        return np.nan
+    text = str(value).strip().replace(",", "")
+    if not text:
+        return np.nan
+    match = _PAYMENT_RE.search(text)
+    if not match:
+        return np.nan
+    amount = float(match.group(0))
+    if amount < 0:
+        return np.nan
+    return amount
+
+
+def parse_payment_series(series: pd.Series) -> pd.Series:
+    return series.map(parse_payment_value)
+
+
+def normalize_multiselect_value(value: object) -> str:
+    if pd.isna(value):
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    parts = [part.strip().lower() for part in text.split(",") if part.strip()]
+    return ",".join(parts)
+
+
 def clean_dataframe(
     df: pd.DataFrame, column_mapping: dict[str, str], require_label: bool = True
 ) -> pd.DataFrame:
@@ -175,6 +228,7 @@ def clean_dataframe(
     cleaned[TEXT_SOUNDTRACK_COLUMN] = df[column_mapping["text_soundtrack"]].map(
         normalize_text_value
     )
+    cleaned[TEXT_FOOD_COLUMN] = df[column_mapping["text_food"]].map(normalize_text_value)
 
     cleaned[INTENSITY_COLUMN] = safe_numeric_series(df[column_mapping["intensity"]])
     cleaned[COLOUR_COUNT_COLUMN] = safe_numeric_series(df[column_mapping["colour_count"]])
@@ -183,6 +237,10 @@ def clean_dataframe(
     cleaned[LIKERT_CONTENT_COLUMN] = parse_likert_series(df[column_mapping["likert_content"]])
     cleaned[LIKERT_CALM_COLUMN] = parse_likert_series(df[column_mapping["likert_calm"]])
     cleaned[LIKERT_UNEASY_COLUMN] = parse_likert_series(df[column_mapping["likert_uneasy"]])
+    cleaned[PAYMENT_COLUMN] = parse_payment_series(df[column_mapping["payment"]])
+    cleaned[ROOM_COLUMN] = df[column_mapping["room"]].map(normalize_multiselect_value)
+    cleaned[VIEW_WITH_COLUMN] = df[column_mapping["view_with"]].map(normalize_multiselect_value)
+    cleaned[SEASON_COLUMN] = df[column_mapping["season"]].map(normalize_multiselect_value)
 
     if require_label:
         cleaned[TARGET_COLUMN] = df[column_mapping["label"]].astype(str).str.strip()
@@ -201,9 +259,8 @@ def clean_dataframe(
 
     for count_col in [COLOUR_COUNT_COLUMN, OBJECT_COUNT_COLUMN]:
         cleaned.loc[cleaned[count_col] < 0, count_col] = np.nan
-
-    # TODO: In later iterations, add semistructured columns:
-    # payment parsing, multi-select categorical fields, and food text handling.
+    cleaned.loc[cleaned[PAYMENT_COLUMN] < 0, PAYMENT_COLUMN] = np.nan
+    cleaned[PAYMENT_COLUMN] = np.log1p(cleaned[PAYMENT_COLUMN])
     return cleaned
 
 
