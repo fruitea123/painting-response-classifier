@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--metrics_out",
         default="reports/train_metrics.json",
-        help="Output path for training/validation metrics JSON.",
+        help="Output path for training metrics JSON.",
     )
     return parser.parse_args()
 
@@ -69,8 +69,16 @@ def main() -> None:
 
     metrics_out = Path(args.metrics_out)
     metrics_out.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(metrics_out, "r", encoding="utf-8-sig") as file:
+            metrics_file = json.load(file)
+    except FileNotFoundError:
+        metrics_file = {}
+
+    metrics_file[args.model] = metrics_payload
+    
     metrics_out.write_text(
-        json.dumps(metrics_payload, indent=2, ensure_ascii=False), encoding="utf-8"
+        json.dumps(metrics_file, indent=2, ensure_ascii=False), encoding="utf-8"
     )
     print(f"[train] wrote metrics to {metrics_out}")
 

@@ -42,8 +42,8 @@ def train(x_train, y_train, seed: int = 311) -> tuple[BaseEstimator, dict]:
 
         stats[str(i)] = {
             "c": c,
-            "accuracy": f1,
-            "macro_f1": acc,
+            "accuracy": acc,
+            "macro_f1": f1,
             "confusion matrix": str(cm)
         }
 

@@ -47,30 +47,30 @@ def main():
     column_mapping = resolve_columns(df_raw.columns, require_label=True)
     df_clean = clean_dataframe(df_raw, column_mapping=column_mapping, require_label=True)
 
-    train_df, val_df = grouped_train_val_split(
+    train_df, test_df = grouped_train_val_split(
         df_clean, group_col=GROUP_COLUMN, val_size=args.test_size, seed=args.seed
     )
 
-    if has_group_leakage(train_df, val_df, group_col=GROUP_COLUMN):
+    if has_group_leakage(train_df, test_df, group_col=GROUP_COLUMN):
         raise RuntimeError("Group leakage detected between train/validation splits.")
     
     metrics_payload = {
         "data_csv": str(args.data),
         "seed": args.seed,
-        "val_size": args.test_size,
+        "test_size": args.test_size,
         "train_rows": int(train_df.shape[0]),
-        "val_rows": int(val_df.shape[0]),
+        "test_rows": int(test_df.shape[0]),
         "train_unique_ids": int(train_df[GROUP_COLUMN].nunique()),
-        "val_unique_ids": int(val_df[GROUP_COLUMN].nunique()),
+        "test_unique_ids": int(test_df[GROUP_COLUMN].nunique()),
         "counts_train": {
             "The Persistence of Memory": len(train_df[train_df[TARGET_COLUMN] == "The Persistence of Memory"]),
             "The Starry Night": len(train_df[train_df[TARGET_COLUMN] == "The Starry Night"]),
             "The Water Lily Pond": len(train_df[train_df[TARGET_COLUMN] == "The Water Lily Pond"])
         },
         "counts_val": {
-            "The Persistence of Memory": len(val_df[val_df[TARGET_COLUMN] == "The Persistence of Memory"]),
-            "The Starry Night": len(val_df[val_df[TARGET_COLUMN] == "The Starry Night"]),
-            "The Water Lily Pond": len(val_df[val_df[TARGET_COLUMN] == "The Water Lily Pond"])
+            "The Persistence of Memory": len(test_df[test_df[TARGET_COLUMN] == "The Persistence of Memory"]),
+            "The Starry Night": len(test_df[test_df[TARGET_COLUMN] == "The Starry Night"]),
+            "The Water Lily Pond": len(test_df[test_df[TARGET_COLUMN] == "The Water Lily Pond"])
         }
     }
 
@@ -85,7 +85,7 @@ def main():
         train_df.to_csv(file, index=False)
     
     with open(args.test, "w", encoding="utf-8", newline="") as file:
-        val_df.to_csv(file, index=False)
+        test_df.to_csv(file, index=False)
 
 
 if __name__ == "__main__":

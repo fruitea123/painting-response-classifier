@@ -1,8 +1,8 @@
 from sklearn.linear_model import LogisticRegression
 from sklearn.base import BaseEstimator
 
-def train(x_train, y_train, seed: int = 311) -> BaseEstimator:
+def train(x_train, y_train, seed: int = 311) -> tuple[BaseEstimator, dict]:
     """Train a simple multinomial logistic regression baseline."""
     model = LogisticRegression(max_iter=2000, random_state=seed)
     model.fit(x_train, y_train)
-    return model
+    return model, {}
