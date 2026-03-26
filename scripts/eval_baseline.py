@@ -26,14 +26,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--data_csv",
-        required=True,
-        help="Path to labeled CSV used for evaluation.",
+        default="data/test.csv",
+        help="Path to sanitized, labelled CSV used for evaluation.",
     )
     parser.add_argument(
         "--subset",
-        choices=["saved_val", "all"],
-        default="saved_val",
-        help="Evaluate on saved validation IDs or all rows.",
+        choices=["saved_test", "all"],
+        default="saved_test",
+        help="Evaluate on saved test IDs or all rows.",
     )
     parser.add_argument(
         "--metrics_out",
@@ -57,18 +57,16 @@ def main() -> None:
     with model_path.open("rb") as f:
         artifact = pickle.load(f)
 
-    df_raw = pd.read_csv(data_csv)
+    with open(args.data_csv, "r", encoding="utf-8") as file:
+        df_clean = pd.read_csv(file)
 
-    column_mapping = artifact["column_mapping"]
-    validate_column_mapping(df_raw.columns, column_mapping, require_label=True)
-    df_clean = clean_dataframe(df_raw, column_mapping=column_mapping, require_label=True)
-
-    if args.subset == "saved_val":
-        saved_ids = set(str(v) for v in artifact.get("val_unique_ids", []))
+    if args.subset == "saved_test":
+        test_unique_ids = sorted(df_clean[GROUP_COLUMN].astype(str).unique().tolist())
+        saved_ids = set(str(v) for v in test_unique_ids)
         eval_df = df_clean[df_clean[GROUP_COLUMN].astype(str).isin(saved_ids)].copy()
         if eval_df.empty:
             raise ValueError(
-                "Subset 'saved_val' produced zero rows. "
+                "Subset 'saved_test' produced zero rows. "
                 "Check whether evaluation CSV matches training artifact IDs."
             )
     else:
@@ -91,15 +89,22 @@ def main() -> None:
         "data_csv": str(data_csv),
         "subset": args.subset,
         "n_eval_rows": int(eval_df.shape[0]),
-        "n_eval_unique_ids": int(eval_df[GROUP_COLUMN].nunique()),
+        "n_etest_unique_ids": int(eval_df[GROUP_COLUMN].nunique()),
         "seed": artifact.get("seed"),
         "metrics": eval_metrics,
     }
 
     metrics_out = Path(args.metrics_out)
     metrics_out.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(metrics_out, "r", encoding="utf-8-sig") as file:
+            metrics_file = json.load(file)
+    except FileNotFoundError:
+        metrics_file = {}
+
+    metrics_file[args.model] = metrics_payload
     metrics_out.write_text(
-        json.dumps(metrics_payload, indent=2, ensure_ascii=False), encoding="utf-8"
+        json.dumps(metrics_file, indent=2, ensure_ascii=False), encoding="utf-8"
     )
     print(f"[eval] wrote metrics to {metrics_out}")
 
