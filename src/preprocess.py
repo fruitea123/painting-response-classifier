@@ -261,6 +261,12 @@ def clean_dataframe(
         cleaned.loc[cleaned[count_col] < 0, count_col] = np.nan
     cleaned.loc[cleaned[PAYMENT_COLUMN] < 0, PAYMENT_COLUMN] = np.nan
     cleaned[PAYMENT_COLUMN] = np.log1p(cleaned[PAYMENT_COLUMN])
+
+    # Remove rows where over half of the values are missing
+    row_missing_rate = (cleaned.isna() | (cleaned == "")).mean(axis=1)
+    cleaned = cleaned[row_missing_rate <= 0.5]
+    print(f"[preprocess] removed {len(df) - len(cleaned)} rows due to over 50% missing rate")
+
     return cleaned
 
 
