@@ -265,7 +265,6 @@ def clean_dataframe(
     # Remove rows where over half of the values are missing
     row_missing_rate = (cleaned.isna() | (cleaned == "")).mean(axis=1)
     cleaned = cleaned[row_missing_rate <= 0.5]
-    print(f"[preprocess] removed {len(df) - len(cleaned)} rows due to over 50% missing rate")
 
     return cleaned
 
