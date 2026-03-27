@@ -45,7 +45,7 @@ def main():
         print(f"[preprocess] wrote audit JSON to {args.audit_json}")
 
     column_mapping = resolve_columns(df_raw.columns, require_label=True)
-    df_clean = clean_dataframe(df_raw, column_mapping=column_mapping, require_label=True)
+    df_clean = clean_dataframe(df_raw, column_mapping=column_mapping, require_label=True, remove_empty=True)
 
     train_df, test_df = grouped_train_val_split(
         df_clean, group_col=GROUP_COLUMN, val_size=args.test_size, seed=args.seed

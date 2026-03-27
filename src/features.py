@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from typing import Any
+import numpy as np
 
-from scipy.sparse import csr_matrix, hstack
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import MultiLabelBinarizer
+from src.transform import split_multiselect_value
 
 from src.preprocess import (
     CATEGORICAL_MULTI_COLUMNS,
@@ -15,6 +16,7 @@ from src.preprocess import (
     fit_numeric_fill_values,
 )
 
+
 DEFAULT_TFIDF_CONFIG = {
     "max_features": 5000,
     "ngram_range": (1, 2),
@@ -22,36 +24,19 @@ DEFAULT_TFIDF_CONFIG = {
 }
 
 
-def _split_multiselect_value(value: object) -> list[str]:
-    if value is None:
-        return []
-    text = str(value).strip()
-    if not text:
-        return []
-    return [part.strip() for part in text.split(",") if part.strip()]
-
-
 def _fit_categorical_features(train_df, categorical_columns: list[str]):
     matrices = []
     encoders = {}
     for col in categorical_columns:
         encoder = MultiLabelBinarizer(sparse_output=True)
-        values = train_df[col].fillna("").map(_split_multiselect_value)
-        matrices.append(encoder.fit_transform(values))
-        encoders[col] = encoder
+        values = train_df[col].fillna("").map(split_multiselect_value)
+        matrices.append(encoder.fit_transform(values).toarray())
+        encoders[col] = {
+            "classes_": encoder.classes_
+        }
     if matrices:
-        return hstack(matrices, format="csr"), encoders
-    return csr_matrix((train_df.shape[0], 0)), encoders
-
-
-def _transform_categorical_features(df, encoders: dict[str, MultiLabelBinarizer]):
-    matrices = []
-    for col, encoder in encoders.items():
-        values = df[col].fillna("").map(_split_multiselect_value)
-        matrices.append(encoder.transform(values))
-    if matrices:
-        return hstack(matrices, format="csr")
-    return csr_matrix((df.shape[0], 0))
+        return np.hstack(matrices), encoders
+    return np.zeros((train_df.shape[0], 0)), encoders
 
 
 def fit_features(
@@ -76,16 +61,20 @@ def fit_features(
 
     combined_text = combine_text_columns(filled, text_columns=use_text_columns)
     vectorizer = TfidfVectorizer(**use_tfidf_config)
-    x_text = vectorizer.fit_transform(combined_text)
+    x_text = vectorizer.fit_transform(combined_text).toarray()
 
-    x_structured = csr_matrix(filled[use_structured_columns].to_numpy(dtype=float))
+    x_structured = filled[use_structured_columns].to_numpy(dtype=float)
     x_categorical, categorical_encoders = _fit_categorical_features(
         filled, use_categorical_columns
     )
-    x_all = hstack([x_text, x_structured, x_categorical], format="csr")
+    x_all = np.hstack([x_text, x_structured, x_categorical])
 
     feature_state = {
-        "vectorizer": vectorizer,
+        "vectorizer": {
+            "vocabulary_": vectorizer.vocabulary_,
+            "idf_": vectorizer.idf_,
+            "token_pattern": r"(?u)\b\w\w+\b"   # Default pattern used by TfidVectorizer, from its docs
+        },
         "fill_values": fill_values,
         "text_columns": list(use_text_columns),
         "structured_columns": list(use_structured_columns),
@@ -94,22 +83,3 @@ def fit_features(
         "tfidf_config": use_tfidf_config,
     }
     return x_all, feature_state
-
-
-def transform_features(df, feature_state: dict[str, Any]):
-    """Transform arbitrary split/data using pre-fitted feature state."""
-    filled = apply_numeric_fill_values(
-        df,
-        fill_values=feature_state["fill_values"],
-        numeric_columns=feature_state["structured_columns"],
-    )
-    combined_text = combine_text_columns(filled, text_columns=feature_state["text_columns"])
-
-    x_text = feature_state["vectorizer"].transform(combined_text)
-    x_structured = csr_matrix(
-        filled[feature_state["structured_columns"]].to_numpy(dtype=float)
-    )
-    x_categorical = _transform_categorical_features(
-        filled, feature_state.get("categorical_encoders", {})
-    )
-    return hstack([x_text, x_structured, x_categorical], format="csr")

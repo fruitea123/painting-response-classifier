@@ -12,9 +12,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.features import transform_features
+from src.transform import transform_features
 from src.model import evaluate_model
-from src.preprocess import GROUP_COLUMN, TARGET_COLUMN, clean_dataframe, validate_column_mapping
+from src.preprocess import GROUP_COLUMN, TARGET_COLUMN
 
 
 def parse_args() -> argparse.Namespace:
