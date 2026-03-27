@@ -217,7 +217,7 @@ def normalize_multiselect_value(value: object) -> str:
 
 
 def clean_dataframe(
-    df: pd.DataFrame, column_mapping: dict[str, str], require_label: bool = True
+    df: pd.DataFrame, column_mapping: dict[str, str], require_label: bool = True, remove_empty=False
 ) -> pd.DataFrame:
     """Build a standardized clean DataFrame used by train/eval code."""
     validate_column_mapping(df.columns, column_mapping, require_label=require_label)
@@ -261,6 +261,12 @@ def clean_dataframe(
         cleaned.loc[cleaned[count_col] < 0, count_col] = np.nan
     cleaned.loc[cleaned[PAYMENT_COLUMN] < 0, PAYMENT_COLUMN] = np.nan
     cleaned[PAYMENT_COLUMN] = np.log1p(cleaned[PAYMENT_COLUMN])
+
+    if remove_empty:
+        # Remove rows where over half of the values are missing
+        row_missing_rate = (cleaned.isna() | (cleaned == "")).mean(axis=1)
+        cleaned = cleaned[row_missing_rate <= 0.5]
+
     return cleaned
 
 
