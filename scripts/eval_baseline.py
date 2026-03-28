@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import pickle
 import sys
@@ -53,6 +54,14 @@ def main() -> None:
 
     model_path = Path(args.model)
     data_csv = Path(args.data_csv)
+
+    # Compatibility shim for custom estimators pickled from dynamically
+    # loaded training modules.
+    if "user_module" not in sys.modules:
+        try:
+            sys.modules["user_module"] = importlib.import_module("src.mlp")
+        except ModuleNotFoundError:
+            pass
 
     with model_path.open("rb") as f:
         artifact = pickle.load(f)
