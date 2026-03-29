@@ -48,7 +48,9 @@ def train(x_train, y_train, seed: int = 311) -> tuple[BaseEstimator, dict]:
         }
 
         if f1 > best[0]:
-            best = (f1, model, c, acc, f1, str(cm))
+            best_model = LogisticRegression(C=c, max_iter=2000, random_state=seed)
+            best_model.fit(x_train, y_train)
+            best = (f1, best_model, c, acc, f1, str(cm))
     
     stats["final"] = {
         "c": best[2],

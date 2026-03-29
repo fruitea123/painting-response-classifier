@@ -5,10 +5,10 @@ import importlib
 import json
 import pickle
 import sys
-from ast import literal_eval
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,7 +21,9 @@ from src.preprocess import GROUP_COLUMN, TARGET_COLUMN
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train grouped baseline model.")
+    parser = argparse.ArgumentParser(
+        description="Train grouped logistic baseline and export a lightweight inference artifact."
+    )
     parser.add_argument("--train_csv", default="data/train.csv", help="Path to CSV containing sanitized training data.")
     parser.add_argument("--model", required=True, help="Python module containing the model training function.")
     parser.add_argument("--seed", type=int, default=311, help="Random seed for model.")
@@ -33,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--artifact_out",
         default="artifacts/baseline_logreg_tfidf.pkl",
-        help="Output path for serialized model artifact.",
+        help="Output path for the lightweight inference artifact.",
     )
     parser.add_argument(
         "--metrics_out",
@@ -58,6 +60,22 @@ def parse_ngram_max_values(raw: str) -> list[int]:
     if any(value < 1 for value in values):
         raise ValueError(f"Invalid n-gram values: {values}")
     return values
+
+
+def extract_logreg_artifact_state(model) -> dict:
+    required_attrs = ("classes_", "coef_", "intercept_")
+    missing_attrs = [attr for attr in required_attrs if not hasattr(model, attr)]
+    if missing_attrs:
+        raise TypeError(
+            "Final inference artifact export currently supports logistic-regression-style "
+            f"models with {required_attrs}. Missing: {missing_attrs}"
+        )
+
+    return {
+        "classes": np.asarray(model.classes_).copy(),
+        "coef": np.asarray(model.coef_, dtype=float).copy(),
+        "intercept": np.asarray(model.intercept_, dtype=float).copy(),
+    }
 
 def main() -> None:
     args = parse_args()
@@ -135,19 +153,19 @@ def main() -> None:
     )
     print(f"[train] wrote metrics to {metrics_out}")
 
+    model_state = extract_logreg_artifact_state(model)
+
     artifact_payload = {
+        "artifact_version": 1,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "seed": args.seed,
-        "model": model,
-        "vectorizer": feature_state["vectorizer"],
-        "fill_values": feature_state["fill_values"],
-        "feature_config": {
-            "text_columns": feature_state["text_columns"],
-            "structured_columns": feature_state["structured_columns"],
-            "categorical_columns": feature_state.get("categorical_columns", []),
-            "categorical_encoders": feature_state.get("categorical_encoders", {}),
-            "tfidf_config": feature_state["tfidf_config"],
-        }
+        "train_csv": str(args.train_csv),
+        "model_module": args.model,
+        "model_type": "multinomial_logreg",
+        "feature_state": feature_state,
+        "classes": model_state["classes"],
+        "coef": model_state["coef"],
+        "intercept": model_state["intercept"],
     }
 
     artifact_out = Path(args.artifact_out)
