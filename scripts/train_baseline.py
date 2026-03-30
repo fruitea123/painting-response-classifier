@@ -5,10 +5,10 @@ import importlib
 import json
 import pickle
 import sys
-from ast import literal_eval
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,7 +21,9 @@ from src.preprocess import GROUP_COLUMN, TARGET_COLUMN
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train grouped baseline model.")
+    parser = argparse.ArgumentParser(
+        description="Train grouped logistic baseline and export a lightweight inference artifact."
+    )
     parser.add_argument("--train_csv", default="data/train.csv", help="Path to CSV containing sanitized training data.")
     parser.add_argument("--model", required=True, help="Python module containing the model training function.")
     parser.add_argument("--seed", type=int, default=311, help="Random seed for model.")
@@ -33,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--artifact_out",
         default="artifacts/baseline_logreg_tfidf.pkl",
-        help="Output path for serialized model artifact.",
+        help="Output path for the lightweight inference artifact.",
     )
     parser.add_argument(
         "--metrics_out",
@@ -48,7 +50,7 @@ def load_module_from_path(path):
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    return module
+    return module.Trainer
 
 
 def parse_ngram_max_values(raw: str) -> list[int]:
@@ -59,6 +61,7 @@ def parse_ngram_max_values(raw: str) -> list[int]:
         raise ValueError(f"Invalid n-gram values: {values}")
     return values
 
+
 def main() -> None:
     args = parse_args()
 
@@ -67,8 +70,7 @@ def main() -> None:
 
     y_train = train_df[TARGET_COLUMN].to_numpy()
 
-    train_module = load_module_from_path(args.model)
-    train = train_module.train
+    Trainer = load_module_from_path(args.model)
     ngram_max_values = parse_ngram_max_values(args.ngram_max_values)
 
     best_score = float("-inf")
@@ -82,7 +84,7 @@ def main() -> None:
         tfidf_config = {"ngram_range": (1, ngram_max)}
         print(f"[feature_tuning] testing ngram_range=(1, {ngram_max})")
         x_train, feature_state = fit_features(train_df, tfidf_config=tfidf_config)
-        model, stats = train(x_train, y_train, seed=args.seed)
+        model, stats = Trainer.train(x_train, y_train, seed=args.seed)
         train_metrics, _ = evaluate_model(model, x_train, y_train)
 
         final_stats = stats.get("final", {})
@@ -116,8 +118,7 @@ def main() -> None:
         "train_rows": int(train_df.shape[0]),
         "train_unique_ids": int(train_df[GROUP_COLUMN].nunique()),
         "train_metrics": train_metrics,
-        "feature_search": feature_search_stats,
-        "tune_stats": stats,
+        "feature_search": feature_search_stats
     }
 
     metrics_out = Path(args.metrics_out)
@@ -135,19 +136,21 @@ def main() -> None:
     )
     print(f"[train] wrote metrics to {metrics_out}")
 
+    model_state = Trainer.extract_artifact_state(model)
+    if model_state is not None:
+        # If 'extract_artifact_state' is implemented, do not save sklearn model
+        model = None
+
     artifact_payload = {
+        "artifact_version": 1,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "seed": args.seed,
-        "model": model,
-        "vectorizer": feature_state["vectorizer"],
-        "fill_values": feature_state["fill_values"],
-        "feature_config": {
-            "text_columns": feature_state["text_columns"],
-            "structured_columns": feature_state["structured_columns"],
-            "categorical_columns": feature_state.get("categorical_columns", []),
-            "categorical_encoders": feature_state.get("categorical_encoders", {}),
-            "tfidf_config": feature_state["tfidf_config"],
-        }
+        "train_csv": str(args.train_csv),
+        "model_module": args.model,
+        "model_type": Trainer.model_type,
+        "feature_state": feature_state,
+        "model_state": model_state,
+        "model": model
     }
 
     artifact_out = Path(args.artifact_out)

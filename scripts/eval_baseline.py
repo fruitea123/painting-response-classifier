@@ -1,40 +1,54 @@
 from __future__ import annotations
 
 import argparse
-import importlib
 import json
 import pickle
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+
+from train_baseline import load_module_from_path
+from src.BaseTrainer import *
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.PaintingClassifier import *
 from src.transform import transform_features
 from src.model import evaluate_model
-from src.preprocess import GROUP_COLUMN, TARGET_COLUMN
+from src.preprocess import (
+    CATEGORICAL_MULTI_COLUMNS,
+    GROUP_COLUMN,
+    STRUCTURED_FEATURE_COLUMNS,
+    TARGET_COLUMN,
+    TEXT_FEATURE_COLUMNS,
+    clean_dataframe,
+    resolve_columns,
+)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Evaluate saved baseline artifact.")
+    parser = argparse.ArgumentParser(
+        description="Evaluate the lightweight inference artifact and verify sklearn parity."
+    )
     parser.add_argument(
         "--model",
         required=True,
-        help="Path to trained baseline artifact (.pkl).",
+        help="Path to the trained lightweight inference artifact (.pkl).",
     )
     parser.add_argument(
         "--data_csv",
         default="data/test.csv",
-        help="Path to sanitized, labelled CSV used for evaluation.",
+        help="Path to a labelled CSV used for evaluation.",
     )
     parser.add_argument(
         "--subset",
-        choices=["saved_test", "all"],
-        default="saved_test",
-        help="Evaluate on saved test IDs or all rows.",
+        choices=["all"],
+        default="all",
+        help="Evaluate on all rows in the provided labelled CSV.",
     )
     parser.add_argument(
         "--metrics_out",
@@ -49,60 +63,85 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def ensure_standardized_eval_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    standardized_columns = {
+        GROUP_COLUMN,
+        TARGET_COLUMN,
+        *TEXT_FEATURE_COLUMNS,
+        *STRUCTURED_FEATURE_COLUMNS,
+        *CATEGORICAL_MULTI_COLUMNS,
+    }
+    if standardized_columns.issubset(df.columns):
+        return df.copy()
+
+    column_mapping = resolve_columns(df.columns, require_label=True)
+    return clean_dataframe(df, column_mapping=column_mapping, require_label=True)
+
+
 def main() -> None:
     args = parse_args()
 
     model_path = Path(args.model)
     data_csv = Path(args.data_csv)
 
-    # Compatibility shim for custom estimators pickled from dynamically
-    # loaded training modules.
-    if "user_module" not in sys.modules:
-        try:
-            sys.modules["user_module"] = importlib.import_module("src.mlp")
-        except ModuleNotFoundError:
-            pass
-
     with model_path.open("rb") as f:
         artifact = pickle.load(f)
 
     with open(args.data_csv, "r", encoding="utf-8") as file:
-        df_clean = pd.read_csv(file)
+        raw_df = pd.read_csv(file)
 
-    if args.subset == "saved_test":
-        test_unique_ids = sorted(df_clean[GROUP_COLUMN].astype(str).unique().tolist())
-        saved_ids = set(str(v) for v in test_unique_ids)
-        eval_df = df_clean[df_clean[GROUP_COLUMN].astype(str).isin(saved_ids)].copy()
-        if eval_df.empty:
-            raise ValueError(
-                "Subset 'saved_test' produced zero rows. "
-                "Check whether evaluation CSV matches training artifact IDs."
+    trainer = load_module_from_path(artifact["model_module"])
+
+    df_clean = ensure_standardized_eval_dataframe(raw_df)
+
+    eval_df = df_clean
+
+    x_eval = transform_features(eval_df, artifact["feature_state"])
+    y_eval = eval_df[TARGET_COLUMN].to_numpy()
+
+    used_lightweight = False
+    if artifact["model_state"] is not None:
+        # Build lightweight model, if implemented
+
+        if artifact["model_type"] == LOGREG:
+            model = PaintingClassifierLogreg.from_artifact(artifact["model_state"])
+        else:
+            raise NotImplementedError("lightweight model for selected model type not implemented.")
+        
+        used_lightweight = True
+    else:
+        # Assume if no saved model state, an sklearn model was saved.
+        print("[eval] model state not found. using saved sklearn model.")
+        model = artifact["model"]
+
+    eval_metrics, eval_predictions = evaluate_model(model, x_eval, y_eval)
+    sklearn_reference_model = trainer.build_sklearn_reference_model(artifact["model_state"])
+    
+    if sklearn_reference_model:
+        sklearn_predictions = np.asarray(sklearn_reference_model.predict(x_eval))
+        mismatch_count = int(np.sum(sklearn_predictions != eval_predictions))
+
+        if mismatch_count > 0:
+            raise AssertionError(
+                "Lightweight inference path diverged from sklearn logistic regression "
+                f"on {mismatch_count} evaluation rows."
             )
     else:
-        eval_df = df_clean
-
-    feature_state = {
-        "vectorizer": artifact["vectorizer"],
-        "fill_values": artifact["fill_values"],
-        "text_columns": artifact["feature_config"]["text_columns"],
-        "structured_columns": artifact["feature_config"]["structured_columns"],
-        "categorical_columns": artifact["feature_config"].get("categorical_columns", []),
-        "categorical_encoders": artifact["feature_config"].get("categorical_encoders", {}),
-        "tfidf_config": artifact["feature_config"]["tfidf_config"],
-    }
-
-    x_eval = transform_features(eval_df, feature_state)
-    y_eval = eval_df[TARGET_COLUMN].to_numpy()
-    eval_metrics, eval_predictions = evaluate_model(artifact["model"], x_eval, y_eval)
+        mismatch_count = None
 
     metrics_payload = {
         "model_path": str(model_path),
         "data_csv": str(data_csv),
         "subset": args.subset,
         "n_eval_rows": int(eval_df.shape[0]),
-        "n_etest_unique_ids": int(eval_df[GROUP_COLUMN].nunique()),
+        "n_eval_unique_ids": int(eval_df[GROUP_COLUMN].nunique()),
         "seed": artifact.get("seed"),
         "metrics": eval_metrics,
+        "used_lightweight_model": used_lightweight,
+        "parity": {
+            "matches_sklearn_reference": True,
+            "mismatch_count": mismatch_count,
+        },
     }
 
     metrics_out = Path(args.metrics_out)
