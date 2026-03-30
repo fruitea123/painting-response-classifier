@@ -50,7 +50,7 @@ def load_module_from_path(path):
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    return module
+    return module.Trainer
 
 
 def parse_ngram_max_values(raw: str) -> list[int]:
@@ -62,21 +62,6 @@ def parse_ngram_max_values(raw: str) -> list[int]:
     return values
 
 
-def extract_logreg_artifact_state(model) -> dict:
-    required_attrs = ("classes_", "coef_", "intercept_")
-    missing_attrs = [attr for attr in required_attrs if not hasattr(model, attr)]
-    if missing_attrs:
-        raise TypeError(
-            "Final inference artifact export currently supports logistic-regression-style "
-            f"models with {required_attrs}. Missing: {missing_attrs}"
-        )
-
-    return {
-        "classes": np.asarray(model.classes_).copy(),
-        "coef": np.asarray(model.coef_, dtype=float).copy(),
-        "intercept": np.asarray(model.intercept_, dtype=float).copy(),
-    }
-
 def main() -> None:
     args = parse_args()
 
@@ -85,8 +70,7 @@ def main() -> None:
 
     y_train = train_df[TARGET_COLUMN].to_numpy()
 
-    train_module = load_module_from_path(args.model)
-    train = train_module.train
+    Trainer = load_module_from_path(args.model)
     ngram_max_values = parse_ngram_max_values(args.ngram_max_values)
 
     best_score = float("-inf")
@@ -100,7 +84,7 @@ def main() -> None:
         tfidf_config = {"ngram_range": (1, ngram_max)}
         print(f"[feature_tuning] testing ngram_range=(1, {ngram_max})")
         x_train, feature_state = fit_features(train_df, tfidf_config=tfidf_config)
-        model, stats = train(x_train, y_train, seed=args.seed)
+        model, stats = Trainer.train(x_train, y_train, seed=args.seed)
         train_metrics, _ = evaluate_model(model, x_train, y_train)
 
         final_stats = stats.get("final", {})
@@ -134,8 +118,7 @@ def main() -> None:
         "train_rows": int(train_df.shape[0]),
         "train_unique_ids": int(train_df[GROUP_COLUMN].nunique()),
         "train_metrics": train_metrics,
-        "feature_search": feature_search_stats,
-        "tune_stats": stats,
+        "feature_search": feature_search_stats
     }
 
     metrics_out = Path(args.metrics_out)
@@ -153,7 +136,10 @@ def main() -> None:
     )
     print(f"[train] wrote metrics to {metrics_out}")
 
-    model_state = extract_logreg_artifact_state(model)
+    model_state = Trainer.extract_artifact_state(model)
+    if model_state is not None:
+        # If 'extract_artifact_state' is implemented, do not save sklearn model
+        model = None
 
     artifact_payload = {
         "artifact_version": 1,
@@ -161,11 +147,10 @@ def main() -> None:
         "seed": args.seed,
         "train_csv": str(args.train_csv),
         "model_module": args.model,
-        "model_type": "multinomial_logreg",
+        "model_type": Trainer.model_type,
         "feature_state": feature_state,
-        "classes": model_state["classes"],
-        "coef": model_state["coef"],
-        "intercept": model_state["intercept"],
+        "model_state": model_state,
+        "model": model
     }
 
     artifact_out = Path(args.artifact_out)

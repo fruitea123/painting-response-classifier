@@ -1,6 +1,22 @@
 import numpy as np
 
 class PaintingClassifier():
+    def __init__(self):
+        pass
+
+    @classmethod
+    def from_artifact(cls, artifact: dict):
+        raise NotImplementedError("method 'from_artifact' not implemented for current model class")
+
+    def predict(self, data):
+        classes = ["The Persistence of Memory", "The Starry Night", "The Water Lily Pond"]
+        prediction = np.random.choice(classes, size=data.shape[0])
+        
+        # return the prediction
+        return prediction
+    
+
+class PaintingClassifierLogreg(PaintingClassifier):
     def __init__(self, classes, coef, intercept):
         self.classes = np.asarray(classes)
         self.coef = np.asarray(coef, dtype=float)
