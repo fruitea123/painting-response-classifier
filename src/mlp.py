@@ -29,9 +29,7 @@ class EncodedMLPClassifier(BaseEstimator):
         return int(self.model.n_iter_)
 
 
-class Trainer(BaseTrainer):
-    model_type = MLP
-    def _build_model(
+def _build_model(
         hidden_size: int,
         learning_rate: float,
         max_epochs: int,
@@ -50,6 +48,9 @@ class Trainer(BaseTrainer):
         )
         return EncodedMLPClassifier(model)
 
+
+class Trainer(BaseTrainer):
+    model_type = MLP
 
     def train(x_train, y_train, seed: int = 311) -> tuple[BaseEstimator, dict]:
         """Train a 1-hidden-layer MLP baseline with CV tuning."""
