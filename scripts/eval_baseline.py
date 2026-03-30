@@ -8,13 +8,15 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LogisticRegression
+
+from train_baseline import load_module_from_path
+from src.BaseTrainer import *
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.PaintingClassifier import PaintingClassifier
+from src.PaintingClassifier import *
 from src.transform import transform_features
 from src.model import evaluate_model
 from src.preprocess import (
@@ -61,16 +63,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def build_sklearn_reference_model(artifact: dict) -> LogisticRegression:
-    model = LogisticRegression()
-    model.classes_ = np.asarray(artifact["classes"])
-    model.coef_ = np.asarray(artifact["coef"], dtype=float)
-    model.intercept_ = np.asarray(artifact["intercept"], dtype=float)
-    model.n_features_in_ = model.coef_.shape[1]
-    model.n_iter_ = np.ones(model.coef_.shape[0], dtype=np.int32)
-    return model
-
-
 def ensure_standardized_eval_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     standardized_columns = {
         GROUP_COLUMN,
@@ -98,24 +90,44 @@ def main() -> None:
     with open(args.data_csv, "r", encoding="utf-8") as file:
         raw_df = pd.read_csv(file)
 
+    trainer = load_module_from_path(artifact["model_module"])
+
     df_clean = ensure_standardized_eval_dataframe(raw_df)
 
     eval_df = df_clean
 
     x_eval = transform_features(eval_df, artifact["feature_state"])
     y_eval = eval_df[TARGET_COLUMN].to_numpy()
-    lightweight_model = PaintingClassifier.from_artifact(artifact)
-    eval_metrics, eval_predictions = evaluate_model(lightweight_model, x_eval, y_eval)
 
-    sklearn_reference_model = build_sklearn_reference_model(artifact)
-    sklearn_predictions = np.asarray(sklearn_reference_model.predict(x_eval))
-    mismatch_count = int(np.sum(sklearn_predictions != eval_predictions))
+    used_lightweight = False
+    if artifact["model_state"] is not None:
+        # Build lightweight model, if implemented
 
-    if mismatch_count > 0:
-        raise AssertionError(
-            "Lightweight inference path diverged from sklearn logistic regression "
-            f"on {mismatch_count} evaluation rows."
-        )
+        if artifact["model_type"] == LOGREG:
+            model = PaintingClassifierLogreg.from_artifact(artifact["model_state"])
+        else:
+            raise NotImplementedError("lightweight model for selected model type not implemented.")
+        
+        used_lightweight = True
+    else:
+        # Assume if no saved model state, an sklearn model was saved.
+        print("[eval] model state not found. using saved sklearn model.")
+        model = artifact["model"]
+
+    eval_metrics, eval_predictions = evaluate_model(model, x_eval, y_eval)
+    sklearn_reference_model = trainer.build_sklearn_reference_model(artifact["model_state"])
+    
+    if sklearn_reference_model:
+        sklearn_predictions = np.asarray(sklearn_reference_model.predict(x_eval))
+        mismatch_count = int(np.sum(sklearn_predictions != eval_predictions))
+
+        if mismatch_count > 0:
+            raise AssertionError(
+                "Lightweight inference path diverged from sklearn logistic regression "
+                f"on {mismatch_count} evaluation rows."
+            )
+    else:
+        mismatch_count = None
 
     metrics_payload = {
         "model_path": str(model_path),
@@ -125,6 +137,7 @@ def main() -> None:
         "n_eval_unique_ids": int(eval_df[GROUP_COLUMN].nunique()),
         "seed": artifact.get("seed"),
         "metrics": eval_metrics,
+        "used_lightweight_model": used_lightweight,
         "parity": {
             "matches_sklearn_reference": True,
             "mismatch_count": mismatch_count,
