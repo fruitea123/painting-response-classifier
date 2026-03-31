@@ -15,7 +15,7 @@ class Trainer(BaseTrainer):
         cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
 
         # Hyperparameters:
-        cs = (0.1, 1, 10, 100, 1000)
+        cs = (0.1, 1, 10, 25, 50, 75, 100, 200, 300, 1000)
 
         stats = {}
         best = [-1, None, None, None, None]

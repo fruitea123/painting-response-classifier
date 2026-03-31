@@ -4,6 +4,7 @@ import argparse
 import importlib
 import json
 import pickle
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,7 +47,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_module_from_path(path):
-    spec = importlib.util.spec_from_file_location("user_module", path)
+    module_name = ".".join(path[:-3].split("/"))
+    spec = importlib.util.spec_from_file_location(module_name, path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)

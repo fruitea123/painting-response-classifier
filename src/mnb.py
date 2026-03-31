@@ -12,7 +12,7 @@ class Trainer(BaseTrainer):
     def train(x_train, y_train, seed: int = 311) -> tuple[BaseEstimator, dict]:
         """Train Multinomial Naive Bayes with alpha tuning over TF-IDF features."""
         cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-        alphas = (0.01, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0)
+        alphas = (0.01, 0.025, 0.05, 0.075, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0)
 
         stats = {}
         best = (-1.0, None, None, None, None, None)
