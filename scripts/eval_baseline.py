@@ -105,9 +105,11 @@ def main() -> None:
 
         if artifact["model_type"] == LOGREG:
             model = PaintingClassifierLogreg.from_artifact(artifact["model_state"])
+        elif artifact["model_type"] == MNB:
+            model = PaintingClassifierMNB.from_artifact(artifact["model_state"])
         else:
             raise NotImplementedError("lightweight model for selected model type not implemented.")
-        
+
         used_lightweight = True
     else:
         # Assume if no saved model state, an sklearn model was saved.
