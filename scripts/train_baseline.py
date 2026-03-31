@@ -22,7 +22,7 @@ from src.preprocess import GROUP_COLUMN, TARGET_COLUMN
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Train grouped logistic baseline and export a lightweight inference artifact."
+        description="Train a grouped baseline model and export a lightweight inference artifact."
     )
     parser.add_argument("--train_csv", default="data/train.csv", help="Path to CSV containing sanitized training data.")
     parser.add_argument("--model", required=True, help="Python module containing the model training function.")
@@ -34,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--artifact_out",
-        default="artifacts/baseline_logreg_tfidf.pkl",
+        default="artifacts/baseline_mnb_tfidf.pkl",
         help="Output path for the lightweight inference artifact.",
     )
     parser.add_argument(

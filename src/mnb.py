@@ -55,3 +55,23 @@ class Trainer(BaseTrainer):
             "confusion matrix": best[5],
         }
         return best[1], stats
+
+    def extract_artifact_state(model) -> dict:
+        return {
+            "classes": np.asarray(model.classes_).copy(),
+            "class_log_prior": np.asarray(model.class_log_prior_, dtype=float).copy(),
+            "feature_log_prob": np.asarray(model.feature_log_prob_, dtype=float).copy(),
+        }
+
+    def build_sklearn_reference_model(artifact: dict) -> MultinomialNB:
+        if artifact is None:
+            return None
+
+        model = MultinomialNB()
+        model.classes_ = np.asarray(artifact["classes"])
+        model.class_log_prior_ = np.asarray(artifact["class_log_prior"], dtype=float)
+        model.feature_log_prob_ = np.asarray(artifact["feature_log_prob"], dtype=float)
+        model.class_count_ = np.ones(model.classes_.shape[0], dtype=float)
+        model.feature_count_ = np.exp(model.feature_log_prob_)
+        model.n_features_in_ = model.feature_log_prob_.shape[1]
+        return model
